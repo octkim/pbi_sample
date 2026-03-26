@@ -71,11 +71,9 @@
         let capitalChartInstance = null;
         let recurringChartInstance = null;
 
-        // 전역 변수 (여러 파일의 데이터를 누적하기 위함)
         let globalTotalRev = 0, globalCapRev = 0, globalRecRev = 0, globalTotalOrders = 0;
         let globalCapData = {}, globalRecData = {};
 
-        // 초기화 버튼 함수
         function resetData() {
             globalTotalRev = 0; globalCapRev = 0; globalRecRev = 0; globalTotalOrders = 0;
             globalCapData = {}; globalRecData = {};
@@ -86,19 +84,14 @@
             const files = e.target.files;
             if (files.length === 0) return;
 
-            // 선택된 모든 파일을 순차적으로 읽어서 누적
             for (let i = 0; i < files.length; i++) {
                 await processFile(files[i]);
             }
 
-            // 모든 파일 처리가 끝나면 화면 한 번에 업데이트
             updateUI();
-            
-            // 동일한 파일을 다시 올릴 수 있도록 input 초기화
             e.target.value = '';
         });
 
-        // 개별 파일 처리 로직 (Promise를 사용해 비동기 순차 처리 보장)
         function processFile(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -115,19 +108,24 @@
                     globalTotalOrders += rows.length;
 
                     const keys = Object.keys(rows[0]);
-                    const amountKey = keys.find(k => /amount|value|매출|금액|sales|revenue/i.test(k)) || keys[keys.length - 1];
+                    
+                    // 금액 인식 키워드 대폭 추가 (price, total, sum 등)
+                    const amountKey = keys.find(k => /amount|value|매출|금액|sales|revenue|price|total|sum/i.test(k)) || keys[keys.length - 1];
                     const productKey = keys.find(k => /product|item|material|상품|제품|모델|description/i.test(k)) || keys[0];
                     const typeKey = keys.find(k => /type|category|구분|분류|class/i.test(k));
 
                     rows.forEach(row => {
-                        let amount = parseFloat(row[amountKey]) || 0;
+                        // 핵심 수정 부분: 숫자 이외의 문자(쉼표, 화폐기호 등)를 모두 제거한 뒤 숫자로 변환
+                        let rawAmount = row[amountKey] || "0";
+                        let cleanAmountString = String(rawAmount).replace(/[^0-9.-]+/g, "");
+                        let amount = parseFloat(cleanAmountString) || 0;
+
                         let product = row[productKey] || '알 수 없음';
                         let type = typeKey ? (row[typeKey] || '').toString().toLowerCase() : '';
                         let fileName = file.name.toLowerCase();
 
                         globalTotalRev += amount;
 
-                        // 파일명이나 데이터 구분에 'recurring'이 포함되면 소모품으로 분류
                         if (type.includes('recurring') || type.includes('소모품') || fileName.includes('recurring')) {
                             globalRecRev += amount;
                             globalRecData[product] = (globalRecData[product] || 0) + amount;
@@ -142,7 +140,6 @@
             });
         }
 
-        // 화면 및 차트 업데이트 로직
         function updateUI() {
             document.getElementById('totalRevenue').innerText = '₩ ' + globalTotalRev.toLocaleString(undefined, {maximumFractionDigits: 0});
             document.getElementById('capitalRevenue').innerText = '₩ ' + globalCapRev.toLocaleString(undefined, {maximumFractionDigits: 0});
