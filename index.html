@@ -17,7 +17,7 @@
             <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800">📊 세일즈 대시보드 (Capital & Recurring)</h1>
-                    <p class="text-sm text-slate-500 mt-1">파일을 여러 개 동시에 선택해서 올리면 데이터가 자동으로 합산됩니다.</p>
+                    <p class="text-sm text-slate-500 mt-1">25년, 26년도 데이터를 다중 선택하여 업로드하세요.</p>
                 </div>
                 <div class="flex gap-3">
                     <button onclick="resetData()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-3 px-6 rounded-xl transition">
@@ -92,6 +92,15 @@
             e.target.value = '';
         });
 
+        // 엑셀 컬럼명을 띄어쓰기/대소문자 무시하고 찾아주는 마법의 함수
+        function getVal(row, keywords) {
+            const keys = Object.keys(row);
+            const foundKey = keys.find(k => 
+                keywords.some(kw => k.toLowerCase().replace(/\s/g, '').includes(kw.toLowerCase()))
+            );
+            return foundKey ? row[foundKey] : null;
+        }
+
         function processFile(file) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -107,26 +116,24 @@
 
                     globalTotalOrders += rows.length;
 
-                    const keys = Object.keys(rows[0]);
-                    
-                    // 금액 인식 키워드 대폭 추가 (price, total, sum 등)
-                    const amountKey = keys.find(k => /amount|value|매출|금액|sales|revenue|price|total|sum/i.test(k)) || keys[keys.length - 1];
-                    const productKey = keys.find(k => /product|item|material|상품|제품|모델|description/i.test(k)) || keys[0];
-                    const typeKey = keys.find(k => /type|category|구분|분류|class/i.test(k));
-
                     rows.forEach(row => {
-                        // 핵심 수정 부분: 숫자 이외의 문자(쉼표, 화폐기호 등)를 모두 제거한 뒤 숫자로 변환
-                        let rawAmount = row[amountKey] || "0";
-                        let cleanAmountString = String(rawAmount).replace(/[^0-9.-]+/g, "");
+                        // 1. 매출액 가져오기 (Revenue (KRW) 우선 탐색)
+                        let rawAmount = getVal(row, ['revenue(krw)', 'revenue', '매출']);
+                        let cleanAmountString = String(rawAmount || "0").replace(/[^0-9.-]+/g, "");
                         let amount = parseFloat(cleanAmountString) || 0;
 
-                        let product = row[productKey] || '알 수 없음';
-                        let type = typeKey ? (row[typeKey] || '').toString().toLowerCase() : '';
+                        // 2. 장비명 가져오기 (Product Line)
+                        let product = getVal(row, ['productline', 'product', '상품명']) || '알 수 없음';
+                        
+                        // 3. 카테고리 가져오기 (Category)
+                        let typeRaw = getVal(row, ['category', '카테고리', '구분']);
+                        let type = typeRaw ? String(typeRaw).toLowerCase() : '';
                         let fileName = file.name.toLowerCase();
 
+                        // 4. 합산 로직
                         globalTotalRev += amount;
 
-                        if (type.includes('recurring') || type.includes('소모품') || fileName.includes('recurring')) {
+                        if (type.includes('recurring') || fileName.includes('recurring')) {
                             globalRecRev += amount;
                             globalRecData[product] = (globalRecData[product] || 0) + amount;
                         } else {
@@ -141,9 +148,9 @@
         }
 
         function updateUI() {
-            document.getElementById('totalRevenue').innerText = '₩ ' + globalTotalRev.toLocaleString(undefined, {maximumFractionDigits: 0});
-            document.getElementById('capitalRevenue').innerText = '₩ ' + globalCapRev.toLocaleString(undefined, {maximumFractionDigits: 0});
-            document.getElementById('recurringRevenue').innerText = '₩ ' + globalRecRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+            document.getElementById('totalRevenue').innerText = '₩ ' + globalTotalRev.toLocaleString();
+            document.getElementById('capitalRevenue').innerText = '₩ ' + globalCapRev.toLocaleString();
+            document.getElementById('recurringRevenue').innerText = '₩ ' + globalRecRev.toLocaleString();
             document.getElementById('totalOrders').innerText = globalTotalOrders.toLocaleString() + ' 건';
 
             capitalChartInstance = renderChart('capitalChart', capitalChartInstance, globalCapData, '#6366f1');
@@ -159,13 +166,13 @@
             return new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: sortedData.map(d => d[0].substring(0, 15)),
+                    labels: sortedData.map(d => d[0]),
                     datasets: [{
-                        label: '매출액',
+                        label: '매출액(KRW)',
                         data: sortedData.map(d => d[1]),
                         backgroundColor: color,
                         borderRadius: 6,
-                        barThickness: 20
+                        barThickness: 30
                     }]
                 },
                 options: {
@@ -173,7 +180,18 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { borderDash: [2, 4] },
+                            ticks: {
+                                callback: function(value) {
+                                    // 숫자가 너무 크면 '만', '억' 단위로 잘라주는 센스
+                                    if(value >= 100000000) return (value / 100000000).toFixed(1) + '억';
+                                    if(value >= 10000) return (value / 10000).toFixed(0) + '만';
+                                    return value;
+                                }
+                            }
+                        },
                         x: { grid: { display: false } }
                     }
                 }
