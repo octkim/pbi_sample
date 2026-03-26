@@ -83,4 +83,105 @@
         }
 
         document.getElementById('upload').addEventListener('change', async function(e) {
-            const files =
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            // 선택된 모든 파일을 순차적으로 읽어서 누적
+            for (let i = 0; i < files.length; i++) {
+                await processFile(files[i]);
+            }
+
+            // 모든 파일 처리가 끝나면 화면 한 번에 업데이트
+            updateUI();
+            
+            // 동일한 파일을 다시 올릴 수 있도록 input 초기화
+            e.target.value = '';
+        });
+
+        // 개별 파일 처리 로직 (Promise를 사용해 비동기 순차 처리 보장)
+        function processFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(sheet);
+
+                    if (rows.length === 0) {
+                        resolve(); return;
+                    }
+
+                    globalTotalOrders += rows.length;
+
+                    const keys = Object.keys(rows[0]);
+                    const amountKey = keys.find(k => /amount|value|매출|금액|sales|revenue/i.test(k)) || keys[keys.length - 1];
+                    const productKey = keys.find(k => /product|item|material|상품|제품|모델|description/i.test(k)) || keys[0];
+                    const typeKey = keys.find(k => /type|category|구분|분류|class/i.test(k));
+
+                    rows.forEach(row => {
+                        let amount = parseFloat(row[amountKey]) || 0;
+                        let product = row[productKey] || '알 수 없음';
+                        let type = typeKey ? (row[typeKey] || '').toString().toLowerCase() : '';
+                        let fileName = file.name.toLowerCase();
+
+                        globalTotalRev += amount;
+
+                        // 파일명이나 데이터 구분에 'recurring'이 포함되면 소모품으로 분류
+                        if (type.includes('recurring') || type.includes('소모품') || fileName.includes('recurring')) {
+                            globalRecRev += amount;
+                            globalRecData[product] = (globalRecData[product] || 0) + amount;
+                        } else {
+                            globalCapRev += amount;
+                            globalCapData[product] = (globalCapData[product] || 0) + amount;
+                        }
+                    });
+                    resolve();
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 화면 및 차트 업데이트 로직
+        function updateUI() {
+            document.getElementById('totalRevenue').innerText = '₩ ' + globalTotalRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+            document.getElementById('capitalRevenue').innerText = '₩ ' + globalCapRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+            document.getElementById('recurringRevenue').innerText = '₩ ' + globalRecRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+            document.getElementById('totalOrders').innerText = globalTotalOrders.toLocaleString() + ' 건';
+
+            capitalChartInstance = renderChart('capitalChart', capitalChartInstance, globalCapData, '#6366f1');
+            recurringChartInstance = renderChart('recurringChart', recurringChartInstance, globalRecData, '#10b981');
+        }
+
+        function renderChart(chartId, chartInstance, dataObj, color) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            
+            const sortedData = Object.entries(dataObj).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedData.map(d => d[0].substring(0, 15)),
+                    datasets: [{
+                        label: '매출액',
+                        data: sortedData.map(d => d[1]),
+                        backgroundColor: color,
+                        borderRadius: 6,
+                        barThickness: 20
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
