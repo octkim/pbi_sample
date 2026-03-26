@@ -2,91 +2,127 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>영업 실적 대시보드</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capital & Recurring Sales Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-50 p-6 md:p-12">
-    <div class="max-w-6xl mx-auto">
-        <div class="flex justify-between items-center mb-10">
-            <h1 class="text-3xl font-extrabold text-gray-800">📊 Sales Dashboard</h1>
-            <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition">
-                엑셀 파일 업로드
-                <input type="file" id="upload" class="hidden" accept=".xlsx, .xls" />
-            </label>
-        </div>
+<body class="bg-slate-50 text-slate-800 font-sans">
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-500">
-                <p class="text-sm text-gray-500 uppercase font-bold">총 매출액</p>
-                <p id="totalSales" class="text-2xl font-black text-gray-800 mt-2">₩ 0</p>
+    <div class="flex h-screen overflow-hidden">
+        
+        <div class="flex-1 overflow-y-auto p-8">
+            
+            <div class="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-800">📊 세일즈 대시보드 (Capital & Recurring)</h1>
+                    <p class="text-sm text-slate-500 mt-1">엑셀/CSV 파일을 업로드하면 데이터가 자동으로 시각화됩니다.</p>
+                </div>
+                <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl shadow-md transition flex items-center gap-2">
+                    <i class="fas fa-file-upload"></i> 데이터 업로드
+                    <input type="file" id="upload" class="hidden" accept=".xlsx, .xls, .csv" />
+                </label>
             </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-green-500">
-                <p class="text-sm text-gray-500 uppercase font-bold">총 판매 수량</p>
-                <p id="totalCount" class="text-2xl font-black text-gray-800 mt-2">0건</p>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border-l-4 border-purple-500">
-                <p class="text-sm text-gray-500 uppercase font-bold">평균 단가</p>
-                <p id="avgPrice" class="text-2xl font-black text-gray-800 mt-2">₩ 0</p>
-            </div>
-        </div>
 
-        <div class="bg-white p-8 rounded-xl shadow-sm border mb-10">
-            <h3 class="text-lg font-bold text-gray-700 mb-6">항목별 매출 현황</h3>
-            <canvas id="salesChart" width="400" height="150"></canvas>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-blue-500">
+                    <p class="text-sm font-semibold text-slate-500 mb-1">총 매출액 (Total Revenue)</p>
+                    <h2 id="totalRevenue" class="text-3xl font-bold text-slate-800">₩ 0</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-indigo-500">
+                    <p class="text-sm font-semibold text-slate-500 mb-1">장비 매출 (Capital)</p>
+                    <h2 id="capitalRevenue" class="text-3xl font-bold text-slate-800">₩ 0</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-emerald-500">
+                    <p class="text-sm font-semibold text-slate-500 mb-1">소모품 매출 (Recurring)</p>
+                    <h2 id="recurringRevenue" class="text-3xl font-bold text-slate-800">₩ 0</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-amber-500">
+                    <p class="text-sm font-semibold text-slate-500 mb-1">총 판매 건수</p>
+                    <h2 id="totalOrders" class="text-3xl font-bold text-slate-800">0 건</h2>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4">📈 장비(Capital) 상위 품목 매출</h3>
+                    <div class="relative h-72">
+                        <canvas id="capitalChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4">🔄 소모품(Recurring) 상위 품목 매출</h3>
+                    <div class="relative h-72">
+                        <canvas id="recurringChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script>
-        let myChart;
+        let capitalChartInstance = null;
+        let recurringChartInstance = null;
 
         document.getElementById('upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
-            const reader = new FileReader();
+            if (!file) return;
 
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const data = new Uint8Array(evt.target.result);
                 const workbook = XLSX.read(data, {type: 'array'});
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(sheet);
 
-                // 데이터 계산 (엑셀 컬럼에 '매출' 혹은 'Sales'가 있다고 가정)
-                let total = 0;
-                let labels = [];
-                let values = [];
+                if (rows.length === 0) {
+                    alert("데이터가 비어있습니다.");
+                    return;
+                }
 
-                rows.forEach((row, index) => {
-                    const val = row['매출'] || row['Sales'] || row['price'] || 0;
-                    const label = row['상품명'] || row['Product'] || row['item'] || `데이터 ${index+1}`;
-                    total += Number(val);
-                    labels.push(label);
-                    values.push(val);
-                });
+                // 1. 엑셀의 컬럼명 자동 감지 로직
+                const keys = Object.keys(rows[0]);
+                
+                // 금액 컬럼 찾기 (Amount, Value, 매출, 금액 등)
+                const amountKey = keys.find(k => /amount|value|매출|금액|sales|revenue/i.test(k)) || keys[keys.length - 1];
+                // 제품명 컬럼 찾기 (Product, Item, Material, 상품명, 모델 등)
+                const productKey = keys.find(k => /product|item|material|상품|제품|모델|description/i.test(k)) || keys[0];
+                // 구분 컬럼 찾기 (Capital/Recurring, Type, Category, 분류 등)
+                const typeKey = keys.find(k => /type|category|구분|분류|class/i.test(k));
 
-                // 화면 업데이트
-                document.getElementById('totalSales').innerText = '₩ ' + total.toLocaleString();
-                document.getElementById('totalCount').innerText = rows.length.toLocaleString() + '건';
-                document.getElementById('avgPrice').innerText = '₩ ' + (rows.length > 0 ? Math.round(total/rows.length).toLocaleString() : 0);
+                let totalRev = 0, capRev = 0, recRev = 0;
+                let capData = {}, recData = {};
 
-                // 차트 그리기
-                if (myChart) myChart.destroy();
-                const ctx = document.getElementById('salesChart').getContext('2d');
-                myChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels.slice(0, 10), // 상위 10개만 표시
-                        datasets: [{
-                            label: '매출액',
-                            data: values.slice(0, 10),
-                            backgroundColor: '#3b82f6',
-                            borderRadius: 5
-                        }]
+                // 2. 데이터 분류 및 집계
+                rows.forEach(row => {
+                    let amount = parseFloat(row[amountKey]) || 0;
+                    let product = row[productKey] || '알 수 없음';
+                    let type = typeKey ? (row[typeKey] || '').toString().toLowerCase() : '';
+
+                    totalRev += amount;
+
+                    // 'capital' 또는 '장비' 단어가 포함된 경우
+                    if (type.includes('capital') || type.includes('장비') || file.name.toLowerCase().includes('capital')) {
+                        capRev += amount;
+                        capData[product] = (capData[product] || 0) + amount;
+                    } 
+                    // 'recurring' 또는 '소모품' 단어가 포함된 경우
+                    else if (type.includes('recurring') || type.includes('소모품') || file.name.toLowerCase().includes('recurring')) {
+                        recRev += amount;
+                        recData[product] = (recData[product] || 0) + amount;
+                    } 
+                    // 구분이 명확하지 않은 경우 기본적으로 Capital에 합산 (임시)
+                    else {
+                        capRev += amount;
+                        capData[product] = (capData[product] || 0) + amount;
                     }
                 });
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    </script>
-</body>
-</html>
+
+                // 3. 화면 KPI 업데이트
+                document.getElementById('totalRevenue').innerText = '₩ ' + totalRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+                document.getElementById('capitalRevenue').innerText = '₩ ' + capRev.toLocaleString(undefined, {maximumFractionDigits: 0});
+                document.getElementById('recurringRevenue').innerText = '₩ ' + recRev.toLocaleString(
